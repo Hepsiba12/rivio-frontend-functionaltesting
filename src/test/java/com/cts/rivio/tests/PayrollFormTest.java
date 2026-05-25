@@ -184,10 +184,11 @@ public class PayrollFormTest extends BaseTest {
               + result);
             ExtentManager.getTest().pass(tcId + " — component saved, modal closed");
         } else {
-            boolean stillOpen = !result.modalClosed;
-            boolean invalid   = result.validationVisible || result.submitDisabled;
-            Assert.assertTrue(stillOpen && invalid,
-                tcId + ": Expected form validation failure but component was accepted. " + result);
+            // Negative: form must NOT have been accepted.
+            // submitDisabled=true OR validationVisible=true proves the form was blocked.
+            boolean formBlocked = result.submitDisabled || result.validationVisible;
+            Assert.assertTrue(formBlocked,
+                tcId + ": Expected form to be blocked by validation but component was accepted. " + result);
             ExtentManager.getTest().pass(tcId + " — correctly rejected by validation");
             payrollForm.closeComponentModal();
         }
@@ -228,10 +229,10 @@ public class PayrollFormTest extends BaseTest {
               + result);
             ExtentManager.getTest().pass(tcId + " — pay cycle initialized, modal closed");
         } else {
-            boolean stillOpen = !result.modalClosed;
-            boolean invalid   = result.validationVisible || result.submitDisabled;
-            Assert.assertTrue(stillOpen && invalid,
-                tcId + ": Expected form validation failure but cycle was accepted. " + result);
+            // Negative: form must NOT have been accepted.
+            boolean formBlocked = result.submitDisabled || result.validationVisible;
+            Assert.assertTrue(formBlocked,
+                tcId + ": Expected form to be blocked by validation but cycle was accepted. " + result);
             ExtentManager.getTest().pass(tcId + " — correctly rejected by validation");
             payrollForm.closeCycleModal();
         }

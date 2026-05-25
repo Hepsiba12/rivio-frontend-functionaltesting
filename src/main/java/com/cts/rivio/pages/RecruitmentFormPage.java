@@ -92,17 +92,22 @@ public class RecruitmentFormPage {
     // Job Requisition modal form controls
     private static final By JOB_TITLE_INPUT = By.cssSelector(
         ".p-dialog input[formcontrolname='title']");
+    // Target the inner span.p-select-label — the p-select host is not "clickable" in WebDriver.
+    // CSS multi-selector falls back to the host itself if the label span is absent.
     private static final By JOB_DEPT_DROPDOWN = By.cssSelector(
-        ".p-dialog [formcontrolname='departmentId']");
+        ".p-dialog [formcontrolname='departmentId'] span.p-select-label, " +
+        ".p-dialog [formcontrolname='departmentId'] span[role='combobox']");
     private static final By JOB_LOC_DROPDOWN = By.cssSelector(
-        ".p-dialog [formcontrolname='locationId']");
+        ".p-dialog [formcontrolname='locationId'] span.p-select-label, " +
+        ".p-dialog [formcontrolname='locationId'] span[role='combobox']");
     private static final By JOB_SUBMIT_BTN = By.xpath(
         "//div[contains(@class,'p-dialog')]//button[contains(.,'Create Requisition')] | " +
         "//button[contains(.,'Create Requisition')]");
 
     // Candidate modal form controls
     private static final By CAND_JOB_DROPDOWN = By.cssSelector(
-        ".p-dialog [formcontrolname='jobOpeningId']");
+        ".p-dialog [formcontrolname='jobOpeningId'] span.p-select-label, " +
+        ".p-dialog [formcontrolname='jobOpeningId'] span[role='combobox']");
     private static final By CAND_NAME_INPUT = By.cssSelector(
         ".p-dialog input[formcontrolname='name']");
     private static final By CAND_EMAIL_INPUT = By.cssSelector(
@@ -306,16 +311,26 @@ public class RecruitmentFormPage {
     /**
      * Opens a PrimeNG p-select inside a dialog and clicks the option with the
      * given display text (exact match). Panel is appendTo="body".
+     *
+     * Uses visibilityOfElementLocated (5 s) + JS click so the p-select host
+     * element does not need to pass WebDriver's "clickable" check (pointer-events
+     * are on the inner span, not the host custom element).
+     * aria-label is checked first (most reliable in PrimeNG 17).
      */
     private void selectDropdownInDialog(By dropdownLocator, String optionText) {
         for (int attempt = 0; attempt < 3; attempt++) {
             try {
-                WebElement dropdown = WaitUtils.waitForClickability(driver, dropdownLocator);
-                WaitUtils.safeClick(driver, dropdown);
-                WaitUtils.hardWait(400);
+                // Shorter wait: fail fast rather than locking for 20 s
+                WebElement trigger = new WebDriverWait(driver, Duration.ofSeconds(5))
+                    .until(ExpectedConditions.visibilityOfElementLocated(dropdownLocator));
+                // JS click bypasses pointer-event interception on the p-select host
+                WaitUtils.jsClick(driver, trigger);
+                WaitUtils.hardWait(500);
 
+                // aria-label is the most reliable selector in PrimeNG 17 option items
                 By optBy = By.xpath(
-                    "//li[contains(@class,'p-select-option') and normalize-space(.)='" + optionText + "'] | " +
+                    "//li[contains(@class,'p-select-option') and " +
+                    "(@aria-label='" + optionText + "' or normalize-space(.)='" + optionText + "')] | " +
                     "//li[contains(@class,'p-dropdown-item') and normalize-space(.)='" + optionText + "']");
 
                 try {
@@ -325,11 +340,11 @@ public class RecruitmentFormPage {
                     WaitUtils.hardWait(200);
                     return;
                 } catch (Exception e) {
-                    // Overlay fallback
+                    // Overlay panel fallback (aria-label + text)
                     By fallback = By.xpath(
                         "//*[contains(@class,'p-overlay') or contains(@class,'p-select-panel') " +
                         "or contains(@class,'p-dropdown-panel')]" +
-                        "//*[normalize-space(.)='" + optionText + "']");
+                        "//li[@aria-label='" + optionText + "' or normalize-space(.)='" + optionText + "']");
                     try {
                         WaitUtils.waitForClickability(driver, fallback).click();
                         WaitUtils.hardWait(200);
@@ -337,6 +352,10 @@ public class RecruitmentFormPage {
                     } catch (Exception ignored) {}
                 }
             } catch (StaleElementReferenceException stale) {
+                WaitUtils.hardWait(300);
+            } catch (Exception e) {
+                System.err.println("[RecruitmentFormPage] selectDropdownInDialog attempt "
+                    + (attempt + 1) + " failed: " + e.getMessage());
                 WaitUtils.hardWait(300);
             }
             dismissOpenPanel();
@@ -353,8 +372,9 @@ public class RecruitmentFormPage {
     private void selectFirstDropdownOption(By dropdownLocator) {
         for (int attempt = 0; attempt < 3; attempt++) {
             try {
-                WebElement dropdown = WaitUtils.waitForClickability(driver, dropdownLocator);
-                WaitUtils.safeClick(driver, dropdown);
+                WebElement trigger = new WebDriverWait(driver, Duration.ofSeconds(5))
+                    .until(ExpectedConditions.visibilityOfElementLocated(dropdownLocator));
+                WaitUtils.jsClick(driver, trigger);
                 WaitUtils.hardWait(500);
 
                 By optBy = By.cssSelector(
@@ -368,7 +388,6 @@ public class RecruitmentFormPage {
                     WaitUtils.hardWait(200);
                     return;
                 }
-                // No jobs open — log and return; test will fail as FAIL (submit disabled)
                 System.err.println("[RecruitmentFormPage] No job opening options found in panel.");
                 dismissOpenPanel();
                 return;
@@ -377,7 +396,7 @@ public class RecruitmentFormPage {
                 WaitUtils.hardWait(300);
             } catch (Exception e) {
                 System.err.println("[RecruitmentFormPage] selectFirstDropdownOption attempt "
-                    + (attempt+1) + " failed: " + e.getMessage());
+                    + (attempt + 1) + " failed: " + e.getMessage());
                 WaitUtils.hardWait(300);
             }
             dismissOpenPanel();
@@ -438,15 +457,20 @@ public class RecruitmentFormPage {
     }
 
     private void dismissOpenPanel() {
+        // Send ESC to the currently focused element (closes the dropdown overlay).
+        // NEVER send ESC to body/document — PrimeNG dialog closes on document-level ESC.
         try {
-            List<WebElement> panels = driver.findElements(By.cssSelector(
-                ".p-select-panel, .p-dropdown-panel, .p-overlay"));
-            for (WebElement p : panels) {
-                try { if (p.isDisplayed()) p.sendKeys(Keys.ESCAPE); } catch (Exception ignored) {}
-            }
+            driver.switchTo().activeElement().sendKeys(Keys.ESCAPE);
+            WaitUtils.hardWait(200);
         } catch (Exception ignored) {}
+        // Fallback: click the dialog title bar — neutral area that won't close the dialog
         try {
-            driver.findElement(By.cssSelector("body")).sendKeys(Keys.ESCAPE);
+            List<WebElement> titles = driver.findElements(By.cssSelector(".p-dialog-title"));
+            for (WebElement t : titles) {
+                try {
+                    if (t.isDisplayed()) { t.click(); WaitUtils.hardWait(150); break; }
+                } catch (Exception ignored) {}
+            }
         } catch (Exception ignored) {}
     }
 

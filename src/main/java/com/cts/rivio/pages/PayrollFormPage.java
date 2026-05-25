@@ -88,8 +88,10 @@ public class PayrollFormPage {
     // Component modal form controls
     private static final By COMP_NAME_INPUT = By.cssSelector(
         ".p-dialog input[formcontrolname='name']");
+    // Target the inner span.p-select-label — the p-select host is not "clickable" in WebDriver.
     private static final By COMP_TYPE_DROPDOWN = By.cssSelector(
-        ".p-dialog [formcontrolname='type']");
+        ".p-dialog [formcontrolname='type'] span.p-select-label, " +
+        ".p-dialog [formcontrolname='type'] span[role='combobox']");
     private static final By COMP_VALUE_INPUT = By.cssSelector(
         ".p-dialog input[formcontrolname='value'], " +
         ".p-dialog input[type='number'][formcontrolname='value']");
@@ -394,12 +396,16 @@ public class PayrollFormPage {
     private void selectDropdownInDialog(By dropdownLocator, String optionText) {
         for (int attempt = 0; attempt < 3; attempt++) {
             try {
-                WebElement dropdown = WaitUtils.waitForClickability(driver, dropdownLocator);
-                WaitUtils.safeClick(driver, dropdown);
-                WaitUtils.hardWait(400);
+                // Shorter wait: fail fast rather than locking for 20 s
+                WebElement trigger = new WebDriverWait(driver, Duration.ofSeconds(5))
+                    .until(ExpectedConditions.visibilityOfElementLocated(dropdownLocator));
+                // JS click bypasses pointer-event interception on the p-select host
+                WaitUtils.jsClick(driver, trigger);
+                WaitUtils.hardWait(500);
 
                 By optionBy = By.xpath(
-                    "//li[contains(@class,'p-select-option') and normalize-space(.)='" + optionText + "'] | " +
+                    "//li[contains(@class,'p-select-option') and " +
+                    "(@aria-label='" + optionText + "' or normalize-space(.)='" + optionText + "')] | " +
                     "//li[contains(@class,'p-dropdown-item') and normalize-space(.)='" + optionText + "']");
 
                 try {
@@ -409,11 +415,11 @@ public class PayrollFormPage {
                     WaitUtils.hardWait(200);
                     return;
                 } catch (Exception e) {
-                    // Fallback to overlay panel text search
+                    // Overlay fallback with aria-label
                     By fallback = By.xpath(
                         "//*[contains(@class,'p-overlay') or contains(@class,'p-select-panel') " +
                         "or contains(@class,'p-dropdown-panel')]" +
-                        "//*[normalize-space(.)='" + optionText + "']");
+                        "//li[@aria-label='" + optionText + "' or normalize-space(.)='" + optionText + "']");
                     try {
                         WaitUtils.waitForClickability(driver, fallback).click();
                         WaitUtils.hardWait(200);
@@ -421,6 +427,10 @@ public class PayrollFormPage {
                     } catch (Exception ignored) {}
                 }
             } catch (StaleElementReferenceException stale) {
+                WaitUtils.hardWait(300);
+            } catch (Exception e) {
+                System.err.println("[PayrollFormPage] selectDropdownInDialog attempt "
+                    + (attempt + 1) + " failed: " + e.getMessage());
                 WaitUtils.hardWait(300);
             }
             dismissOpenPanel();
@@ -615,18 +625,19 @@ public class PayrollFormPage {
     }
 
     private void dismissOpenPanel() {
+        // Send ESC to the currently focused element (closes dropdown/calendar overlay).
+        // NEVER send ESC to body/document — PrimeNG dialog closes on document-level ESC.
         try {
-            if (isCalendarPanelOpen()) {
-                driver.findElement(By.cssSelector("body")).sendKeys(Keys.ESCAPE);
-                WaitUtils.hardWait(200);
-            }
+            driver.switchTo().activeElement().sendKeys(Keys.ESCAPE);
+            WaitUtils.hardWait(200);
         } catch (Exception ignored) {}
+        // Fallback: click the dialog title bar — neutral area that won't close the dialog
         try {
-            // Also close any PrimeNG select/dropdown panel that may still be open
-            List<WebElement> panels = driver.findElements(By.cssSelector(
-                ".p-select-panel, .p-dropdown-panel, .p-overlay"));
-            for (WebElement p : panels) {
-                try { if (p.isDisplayed()) p.sendKeys(Keys.ESCAPE); } catch (Exception ignored) {}
+            List<WebElement> titles = driver.findElements(By.cssSelector(".p-dialog-title"));
+            for (WebElement t : titles) {
+                try {
+                    if (t.isDisplayed()) { t.click(); WaitUtils.hardWait(150); break; }
+                } catch (Exception ignored) {}
             }
         } catch (Exception ignored) {}
     }

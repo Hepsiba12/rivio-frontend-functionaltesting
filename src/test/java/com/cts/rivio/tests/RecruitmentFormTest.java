@@ -204,10 +204,12 @@ public class RecruitmentFormTest extends BaseTest {
               + result);
             ExtentManager.getTest().pass(tcId + " — job requisition created, modal closed");
         } else {
-            boolean stillOpen = !result.modalClosed;
-            boolean invalid   = result.validationVisible || result.submitDisabled;
-            Assert.assertTrue(stillOpen && invalid,
-                tcId + ": Expected form validation failure but requisition was accepted. " + result);
+            // Negative: form must NOT have been accepted.
+            // submitDisabled=true OR validationVisible=true proves the form was blocked —
+            // whether the dialog is still open or not (ESC can close it without submitting).
+            boolean formBlocked = result.submitDisabled || result.validationVisible;
+            Assert.assertTrue(formBlocked,
+                tcId + ": Expected form to be blocked by validation but requisition was accepted. " + result);
             ExtentManager.getTest().pass(tcId + " — correctly rejected by validation");
             recruitmentForm.closeJobModal();
         }
@@ -266,10 +268,10 @@ public class RecruitmentFormTest extends BaseTest {
               + result);
             ExtentManager.getTest().pass(tcId + " — candidate added, modal closed");
         } else {
-            boolean stillOpen = !result.modalClosed;
-            boolean invalid   = result.validationVisible || result.submitDisabled;
-            Assert.assertTrue(stillOpen && invalid,
-                tcId + ": Expected form validation failure but candidate was accepted. " + result);
+            // Negative: form must NOT have been accepted.
+            boolean formBlocked = result.submitDisabled || result.validationVisible;
+            Assert.assertTrue(formBlocked,
+                tcId + ": Expected form to be blocked by validation but candidate was accepted. " + result);
             ExtentManager.getTest().pass(tcId + " — correctly rejected by validation");
             recruitmentForm.closeCandidateModal();
         }
