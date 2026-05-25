@@ -3,16 +3,22 @@ package com.cts.rivio.tests;
 import com.cts.rivio.base.BaseTest;
 import com.cts.rivio.constants.AppConstants;
 import com.cts.rivio.pages.EmployeeDirectoryPage;
+import com.cts.rivio.pages.EmployeeOnboardPage;
+import com.cts.rivio.utils.AddEmployeeDataBuilder;
+import com.cts.rivio.utils.ExcelUtils;
 import com.cts.rivio.utils.ExtentManager;
 import com.cts.rivio.utils.WaitUtils;
 import org.openqa.selenium.By;
 import org.openqa.selenium.Keys;
 import org.openqa.selenium.WebElement;
 import org.testng.Assert;
+import org.testng.annotations.BeforeClass;
 import org.testng.annotations.BeforeMethod;
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 import java.util.List;
+import java.util.Map;
 
 /**
  * EmployeeTest – EMP-S-01..EMP-S-03 from the Test Design Excel, plus HR-found
@@ -33,12 +39,46 @@ public class EmployeeTest extends BaseTest {
 
     private EmployeeDirectoryPage directory;
 
+    @BeforeClass(alwaysRun = true)
+    public void bootstrapTestData() {
+        // Make sure EmployeeData.xlsx contains the "AddEmployee" sheet
+        // before the DataProvider tries to read it. Idempotent — does
+        // nothing if the sheet is already present.
+        AddEmployeeDataBuilder.ensureSheet();
+    }
+
     @BeforeMethod(alwaysRun = true)
     public void openDirectory() {
         // Bucket session is already logged in as Admin via BaseTest @BeforeClass.
         driver.get(AppConstants.EMPLOYEE_DIR_URL);
         WaitUtils.waitForAngularLoad(driver);
         directory = new EmployeeDirectoryPage(driver);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // DataProvider — reads every row from EmployeeData.xlsx > AddEmployee
+    // ─────────────────────────────────────────────────────────────────────────
+
+    @DataProvider(name = "addEmployeeRows")
+    public Object[][] addEmployeeRows() {
+        List<Map<String, String>> rows = ExcelUtils.readDataAsMapList(
+                AppConstants.EMPLOYEE_DATA_PATH,
+                AppConstants.SHEET_ADD_EMPLOYEE);
+
+        // One stamp per suite run — substituted into every {ts} placeholder so
+        // each row's email + employeeCode is unique vs. previous runs.
+        String tsStamp = String.valueOf(System.currentTimeMillis() % 100000);
+
+        Object[][] data = new Object[rows.size()][1];
+        for (int i = 0; i < rows.size(); i++) {
+            Map<String, String> row = rows.get(i);
+            // Substitute {ts} in every cell value.
+            for (Map.Entry<String, String> e : row.entrySet()) {
+                e.setValue(AddEmployeeDataBuilder.substitute(e.getValue(), tsStamp));
+            }
+            data[i][0] = row;
+        }
+        return data;
     }
 
     @Test(priority = 1, groups = {"smoke", "regression"}, description = "RV_EMP_001 – Employee directory renders with table + pagination")
@@ -78,6 +118,108 @@ public class EmployeeTest extends BaseTest {
         Assert.assertTrue(directory.isOnboardModalOpen(),
                 "Clicking 'Add Employee' should open the onboarding modal");
         ExtentManager.getTest().pass("Onboard modal opens");
+    }
+
+    /**
+     * RV_EMP_004 — Data-driven Add Employee. Walks every row of
+     * EmployeeData.xlsx > AddEmployee and submits the Onboard New Employee
+     * modal.
+     *
+     * Assertions:
+     *   PASS → wait up to 10s for the dialog to disappear. If it does, the
+     *          row succeeded. Transient `.ng-invalid` markers during the
+     *          submit animation are NOT treated as failure.
+     *   FAIL → the dialog must remain open AND either show a touched
+     *          validation marker or have the submit button disabled.
+     *
+     * Network resilience: a Selenium net::ERR_* mid-run throws
+     * SkipException so we don't cascade-fail the remaining data rows
+     * when the box loses connectivity.
+     */
+    @Test(priority = 4, dataProvider = "addEmployeeRows",
+          groups = {"regression", "datadriven"},
+          description = "RV_EMP_004 – Add Employee from Excel dataset")
+    public void RV_EMP_004_addEmployeeFromExcel(Map<String, String> row) {
+        String tcId     = row.getOrDefault("testCaseId", "RV_ADD_EMP_??");
+        String expected = row.getOrDefault("expectedResult", "PASS").toUpperCase();
+
+        ExtentManager.getTest().info(tcId + " — " + row.get("description"));
+
+        EmployeeOnboardPage onboard = new EmployeeOnboardPage(driver);
+
+        // Clean reset: if a previous row left a modal open, close it
+        // without paying for a full page reload.
+        if (onboard.isModalOpen()) {
+            onboard.closeIfOpen();
+            WaitUtils.hardWait(300);
+        }
+
+        // Navigate only if we're not already on /employees.
+        try {
+            String url = driver.getCurrentUrl();
+            if (url == null || !url.contains("/employees")) {
+                driver.get(AppConstants.EMPLOYEE_DIR_URL);
+                WaitUtils.waitForAngularLoad(driver);
+            }
+        } catch (org.openqa.selenium.WebDriverException netErr) {
+            throw new org.testng.SkipException(
+                tcId + " skipped: browser lost network (" + netErr.getMessage() + ")");
+        }
+
+        directory.clickAddEmployee();
+        Assert.assertTrue(directory.isOnboardModalOpen(),
+                tcId + ": Onboard modal failed to open");
+
+        // Drive the whole flow; result holds modalClosed + readback of each field.
+        EmployeeOnboardPage.AddResult result = onboard.addEmployeeFlow(row, 10);
+        ExtentManager.getTest().info(tcId + " captured values: " + result.capturedValues);
+
+        if ("PASS".equals(expected)) {
+            // Surface the most useful diagnostic up-front: which dropdowns
+            // failed to commit a value? (department, designation, location,
+            // role, employmentType all read back via their visible label.)
+            String missing = findMissingFields(row, result.capturedValues,
+                new String[]{"department", "designation", "location",
+                             "role", "employmentType"});
+            Assert.assertTrue(missing.isEmpty(),
+                tcId + ": these dropdowns did NOT take their values — " + missing
+              + ". Captured=" + result.capturedValues);
+
+            Assert.assertTrue(result.modalClosed,
+                tcId + ": Expected PASS but modal did not close after submit. "
+              + "Backend may have rejected the payload. Captured=" + result.capturedValues);
+            ExtentManager.getTest().pass(tcId + " — submitted and modal closed");
+        } else {
+            // Negative path: the modal must stay open AND show that the form
+            // is invalid (touched markers, error alert, or disabled submit).
+            boolean stillOpen = !result.modalClosed;
+            boolean invalid   = result.validationVisible || result.submitDisabled;
+            Assert.assertTrue(stillOpen && invalid,
+                tcId + ": Expected FAIL but form was accepted. " + result);
+            ExtentManager.getTest().pass(tcId + " — correctly rejected");
+            onboard.closeIfOpen();
+        }
+    }
+
+    /**
+     * Diagnostic helper: return a comma-list of fields whose row value was
+     * non-empty but whose captured (post-fill) value is still blank, meaning
+     * the form control didn't accept the input. Empty string when all fields
+     * we asked about took their values.
+     */
+    private static String findMissingFields(Map<String, String> row,
+                                            Map<String, String> captured,
+                                            String[] fields) {
+        StringBuilder sb = new StringBuilder();
+        for (String f : fields) {
+            String expected = row.getOrDefault(f, "");
+            String actual   = captured.getOrDefault(f, "");
+            if (!expected.isEmpty() && actual.isEmpty()) {
+                if (sb.length() > 0) sb.append(", ");
+                sb.append(f).append(" (wanted '").append(expected).append("')");
+            }
+        }
+        return sb.toString();
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -178,15 +320,17 @@ public class EmployeeTest extends BaseTest {
             } catch (Exception ignored) {}
         }
 
-        // Wait for the Edit Contact & Info dialog
+        // Wait for the Edit Contact & Info dialog. PrimeNG portals the dialog
+        // content out of the <p-dialog> tag, so we use raw form-control
+        // selectors (no `p-dialog ` prefix).
         WaitUtils.waitForPresence(driver, By.cssSelector(
-            "p-dialog input[formcontrolname='bankAccount'], "
-          + "p-dialog input[formcontrolname='phoneNo']"), 10);
+            "input[formcontrolname='bankAccount'], "
+          + "input[formcontrolname='phoneNo']"), 10);
     }
 
     private WebElement findInputByFormControlName(String name) {
         List<WebElement> els = driver.findElements(By.cssSelector(
-            "p-dialog input[formcontrolname='" + name + "']"));
+            "input[formcontrolname='" + name + "']"));
         return els.isEmpty() ? null : els.get(0);
     }
 
@@ -205,7 +349,8 @@ public class EmployeeTest extends BaseTest {
     private boolean isSaveDisabled() {
         try {
             WebElement save = driver.findElement(By.xpath(
-                "//p-dialog//button[contains(.,'Save Changes') or contains(.,'Save')]"));
+                "//div[contains(@class,'p-dialog')]//button"
+              + "[contains(.,'Save Changes') or contains(.,'Save')]"));
             String dis = save.getAttribute("disabled");
             return dis != null && !dis.isEmpty();
         } catch (Exception e) { return false; }
@@ -214,7 +359,8 @@ public class EmployeeTest extends BaseTest {
     private boolean hasNearbyError(String... keywords) {
         for (String kw : keywords) {
             if (!driver.findElements(By.xpath(
-                "//p-dialog//*[contains(translate(.,'ABCDEFGHIJKLMNOPQRSTUVWXYZ',"
+                "//div[contains(@class,'p-dialog')]"
+              + "//*[contains(translate(.,'ABCDEFGHIJKLMNOPQRSTUVWXYZ',"
               + "'abcdefghijklmnopqrstuvwxyz'),'" + kw.toLowerCase() + "') "
               + "and (contains(.,'invalid') or contains(.,'numeric') "
               + "or contains(.,'digits') or contains(.,'must') "

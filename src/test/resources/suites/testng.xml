@@ -27,6 +27,7 @@
             <class name="com.cts.rivio.tests.LeaveTest"/>
             <class name="com.cts.rivio.tests.PayrollTest"/>
             <class name="com.cts.rivio.tests.RecruitmentTest"/>
+            <class name="com.cts.rivio.tests.RecruitmentFormTest"/>
             <class name="com.cts.rivio.tests.CompanyStructureTest"/>
             <class name="com.cts.rivio.tests.ReportsAnalyticsTest"/>
         </classes>
@@ -50,6 +51,7 @@
     <test name="PayrollManager_Bucket">
         <classes>
             <class name="com.cts.rivio.tests.PayrollManagerWorkflowTest"/>
+            <class name="com.cts.rivio.tests.PayrollFormTest"/>
         </classes>
     </test>
 
@@ -59,6 +61,7 @@
             <class name="com.cts.rivio.tests.MyProfileTest"/>
             <class name="com.cts.rivio.tests.MyAttendanceTest"/>
             <class name="com.cts.rivio.tests.MyLeavesTest"/>
+            <class name="com.cts.rivio.tests.LeaveApplyTest"/>
             <class name="com.cts.rivio.tests.MyPayslipsTest"/>
             <class name="com.cts.rivio.tests.EmployeeAccessTest"/>
         </classes>

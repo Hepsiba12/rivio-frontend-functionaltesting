@@ -78,14 +78,23 @@ public class AppConstants {
     public static final String LEAVE_DATA_PATH      = BASE_DIR + "/src/test/resources/testdata/LeaveData.xlsx";
     public static final String ATTENDANCE_DATA_PATH = BASE_DIR + "/src/test/resources/testdata/AttendanceData.xlsx";
     public static final String RECRUITMENT_DATA_PATH= BASE_DIR + "/src/test/resources/testdata/RecruitmentData.xlsx";
+    public static final String FORM_TEST_DATA_PATH  = BASE_DIR + "/src/test/resources/testdata/FormTestData.xlsx";
 
     // ── Excel Sheet Names ─────────────────────────────────────────────────────
     public static final String SHEET_VALID_LOGIN   = "ValidLogin";
     public static final String SHEET_INVALID_LOGIN = "InvalidLogin";
     public static final String SHEET_EMPLOYEE      = "EmployeeData";
+    public static final String SHEET_ADD_EMPLOYEE  = "AddEmployee";
     public static final String SHEET_LEAVE         = "LeaveData";
     public static final String SHEET_ATTENDANCE    = "AttendanceData";
     public static final String SHEET_RECRUITMENT   = "RecruitmentData";
+
+    // ── FormTestData.xlsx sheet names (Leave / Payroll / Recruitment forms) ──
+    public static final String SHEET_LEAVE_APPLY       = "LeaveApply";
+    public static final String SHEET_SALARY_COMPONENT  = "SalaryComponent";
+    public static final String SHEET_PAY_CYCLE         = "PayCycle";
+    public static final String SHEET_JOB_OPENING       = "JobOpening";
+    public static final String SHEET_SOURCED_CANDIDATE = "SourcedCandidate";
 
     // ── Browser ───────────────────────────────────────────────────────────────
     public static final String BROWSER_CHROME  = "chrome";

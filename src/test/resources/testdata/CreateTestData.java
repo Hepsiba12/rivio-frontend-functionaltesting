@@ -7,7 +7,9 @@ import java.io.IOException;
 public class CreateTestData {
 
     private static final String HEADER_BG = "FFBDD7EE";
-    private static final String OUTPUT_DIR = "C:\\Users\\2479384\\OneDrive - Cognizant\\Desktop\\rivio-automation\\src\\test\\resources\\testdata\\";
+    // Resolve relative to the current project so any teammate can regenerate.
+    private static final String OUTPUT_DIR =
+            System.getProperty("user.dir") + "/src/test/resources/testdata/";
 
     public static void main(String[] args) throws IOException {
         createLoginData();
@@ -96,6 +98,7 @@ public class CreateTestData {
         CellStyle hStyle = headerStyle(wb);
         CellStyle dStyle = dataStyle(wb);
 
+        // ── Sheet 1: EmployeeData (legacy directory dataset) ─────────────────
         Sheet sheet = wb.createSheet("EmployeeData");
         writeRow(sheet, 0, hStyle,
                 "firstName", "lastName", "email", "phone", "dob",
@@ -117,11 +120,82 @@ public class CreateTestData {
 
         setColumnWidths(sheet, 14, 14, 28, 16, 14, 10, 16, 22, 18, 14, 14, 10);
 
+        // ── Sheet 2: AddEmployee (Admin > Add Employee onboarding dataset) ───
+        // Columns map to the Onboard New Employee p-dialog (Rivio API §4.1).
+        // expectedResult = PASS  → row must successfully submit
+        // expectedResult = FAIL  → row must be rejected (validation / dup / blank)
+        Sheet add = wb.createSheet("AddEmployee");
+        writeRow(add, 0, hStyle,
+                "testCaseId", "email", "password", "role",
+                "firstName", "lastName", "employeeCode",
+                "department", "designation", "location",
+                "employmentType", "joiningDate", "expectedResult", "description");
+
+        // Positive rows
+        writeRow(add, 1, dStyle,
+                "RV_ADD_EMP_01", "newuser01@rivio.com", "Password123!", "Employee",
+                "Mitesh", "Paliwal", "EMP1001",
+                "Engineering", "Backend Developer", "Bengaluru HQ",
+                "FULL_TIME", "2026-06-01", "PASS",
+                "Valid full-time engineering onboarding");
+        writeRow(add, 2, dStyle,
+                "RV_ADD_EMP_02", "newuser02@rivio.com", "Password123!", "Employee",
+                "Aisha", "Verma", "EMP1002",
+                "HR", "HR Executive", "Mumbai",
+                "FULL_TIME", "2026-06-05", "PASS",
+                "Valid HR onboarding in Mumbai");
+        writeRow(add, 3, dStyle,
+                "RV_ADD_EMP_03", "newuser03@rivio.com", "Password123!", "Manager",
+                "Rahul", "Iyer", "EMP1003",
+                "Engineering", "Engineering Manager", "Bengaluru HQ",
+                "FULL_TIME", "2026-06-10", "PASS",
+                "Manager-role onboarding");
+        writeRow(add, 4, dStyle,
+                "RV_ADD_EMP_04", "newuser04@rivio.com", "Password123!", "Employee",
+                "Priya", "Nair", "EMP1004",
+                "Finance", "Accountant", "Chennai",
+                "PART_TIME", "2026-06-15", "PASS",
+                "Part-time finance onboarding");
+
+        // Negative rows (should be rejected by the modal validators)
+        writeRow(add, 5, dStyle,
+                "RV_ADD_EMP_05", "", "Password123!", "Employee",
+                "NoEmail", "User", "EMP1005",
+                "Engineering", "Backend Developer", "Bengaluru HQ",
+                "FULL_TIME", "2026-06-20", "FAIL",
+                "Empty email — submit must be disabled / form invalid");
+        writeRow(add, 6, dStyle,
+                "RV_ADD_EMP_06", "bad-email-format", "Password123!", "Employee",
+                "Bad", "Email", "EMP1006",
+                "Engineering", "Backend Developer", "Bengaluru HQ",
+                "FULL_TIME", "2026-06-20", "FAIL",
+                "Invalid email format");
+        writeRow(add, 7, dStyle,
+                "RV_ADD_EMP_07", "newuser07@rivio.com", "123", "Employee",
+                "Weak", "Pass", "EMP1007",
+                "Engineering", "Backend Developer", "Bengaluru HQ",
+                "FULL_TIME", "2026-06-22", "FAIL",
+                "Weak password (less than 8 chars)");
+        writeRow(add, 8, dStyle,
+                "RV_ADD_EMP_08", "newuser08@rivio.com", "Password123!", "Employee",
+                "", "", "EMP1008",
+                "Engineering", "Backend Developer", "Bengaluru HQ",
+                "FULL_TIME", "2026-06-25", "FAIL",
+                "Empty first & last name");
+        writeRow(add, 9, dStyle,
+                "RV_ADD_EMP_09", "newuser09@rivio.com", "Password123!", "Employee",
+                "Dup", "Code", "EMP1001",
+                "Engineering", "Backend Developer", "Bengaluru HQ",
+                "FULL_TIME", "2026-06-28", "FAIL",
+                "Duplicate employee code (collides with EMP_01)");
+
+        setColumnWidths(add, 16, 28, 16, 14, 14, 14, 14, 18, 24, 18, 14, 14, 14, 42);
+
         try (FileOutputStream fos = new FileOutputStream(OUTPUT_DIR + "EmployeeData.xlsx")) {
             wb.write(fos);
         }
         wb.close();
-        System.out.println("Created: EmployeeData.xlsx");
+        System.out.println("Created: EmployeeData.xlsx (sheets: EmployeeData, AddEmployee)");
     }
 
     private static void createLeaveData() throws IOException {
