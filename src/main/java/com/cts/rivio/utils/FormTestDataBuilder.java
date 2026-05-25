@@ -269,6 +269,11 @@ public class FormTestDataBuilder {
     //   Submit button: "Create Requisition"
     //
     //   {ts} in title ensures uniqueness per run.
+    //
+    //   Actual department labels in the live DB (verified from browser DOM):
+    //     Administration | Human Resources | Engineering | Finance | Marketing | healthcare
+    //   Actual location labels in the live DB (verified from browser DOM):
+    //     Chennai HQ | Bangalore Hub | Delhi NCR | Bangalore | NAVI MUMBAI
     // ═════════════════════════════════════════════════════════════════════════
 
     static final String[] JOB_HEADERS = {
@@ -278,19 +283,21 @@ public class FormTestDataBuilder {
 
     static final String[][] JOB_ROWS = {
         // ── Positive ──────────────────────────────────────────────────────────
-        {"RV_JOB_01", "Frontend Developer {ts}", "Engineering", "Bengaluru HQ",
-         "PASS", "Positive — Engineering / Bengaluru HQ"},
-        {"RV_JOB_02", "HR Analyst {ts}", "HR", "Mumbai",
-         "PASS", "Positive — HR / Mumbai"},
-        {"RV_JOB_03", "Sales Manager {ts}", "Sales", "Delhi",
-         "PASS", "Positive — Sales / Delhi"},
+        {"RV_JOB_01", "Frontend Developer {ts}", "Engineering",     "Bangalore",
+         "PASS", "Positive — Engineering / Bangalore"},
+        {"RV_JOB_02", "HR Analyst {ts}",         "Human Resources", "Delhi NCR",
+         "PASS", "Positive — Human Resources / Delhi NCR"},
+        {"RV_JOB_03", "Marketing Lead {ts}",     "Marketing",       "Chennai HQ",
+         "PASS", "Positive — Marketing / Chennai HQ"},
+        {"RV_JOB_04", "Finance Lead {ts}",       "Finance",         "Bangalore Hub",
+         "PASS", "Positive — Finance / Bangalore Hub"},
 
         // ── Negative ──────────────────────────────────────────────────────────
-        {"RV_JOB_04", "", "Engineering", "Bengaluru HQ",
+        {"RV_JOB_05", "",                    "Engineering", "Bangalore",
          "FAIL", "Negative — empty title (required)"},
-        {"RV_JOB_05", "QA Engineer {ts}", "", "Bengaluru HQ",
+        {"RV_JOB_06", "QA Engineer {ts}",   "",            "Bangalore",
          "FAIL", "Negative — no department selected (required)"},
-        {"RV_JOB_06", "DevOps Lead {ts}", "Engineering", "",
+        {"RV_JOB_07", "DevOps Lead {ts}",   "Engineering", "",
          "FAIL", "Negative — no location selected (required)"},
     };
 
