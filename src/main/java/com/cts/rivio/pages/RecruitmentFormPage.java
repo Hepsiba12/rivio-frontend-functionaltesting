@@ -309,57 +309,94 @@ public class RecruitmentFormPage {
     }
 
     /**
-     * Opens a PrimeNG p-select inside a dialog and clicks the option with the
-     * given display text (exact match). Panel is appendTo="body".
+     * Opens a PrimeNG p-select inside a dialog and clicks the option matching
+     * optionText. Panel is appendTo="body" so it renders outside the dialog.
      *
-     * Uses visibilityOfElementLocated (5 s) + JS click so the p-select host
-     * element does not need to pass WebDriver's "clickable" check (pointer-events
-     * are on the inner span, not the host custom element).
-     * aria-label is checked first (most reliable in PrimeNG 17).
+     * Strategy (avoids elementToBeClickable which is unreliable on PrimeNG <li>):
+     *  1. Regular click on the span.p-select-label trigger (JS fallback if intercepted).
+     *  2. Wait for ANY li.p-select-option to be PRESENT in the DOM (panel open check).
+     *  3. Iterate all options; match by aria-label first, then getText() — case-insensitive.
+     *  4. JS-click the matched option to avoid pointer-event interception.
+     *  5. Span-child text as a final fallback.
+     *  6. Diagnostic log listing all available option labels when the target isn't found.
      */
     private void selectDropdownInDialog(By dropdownLocator, String optionText) {
         for (int attempt = 0; attempt < 3; attempt++) {
             try {
-                // Shorter wait: fail fast rather than locking for 20 s
+                // 1. Find the trigger span inside the dialog
                 WebElement trigger = new WebDriverWait(driver, Duration.ofSeconds(5))
                     .until(ExpectedConditions.visibilityOfElementLocated(dropdownLocator));
-                // JS click bypasses pointer-event interception on the p-select host
-                WaitUtils.jsClick(driver, trigger);
-                WaitUtils.hardWait(500);
 
-                // aria-label is the most reliable selector in PrimeNG 17 option items
-                By optBy = By.xpath(
-                    "//li[contains(@class,'p-select-option') and " +
-                    "(@aria-label='" + optionText + "' or normalize-space(.)='" + optionText + "')] | " +
-                    "//li[contains(@class,'p-dropdown-item') and normalize-space(.)='" + optionText + "']");
+                // 2. Regular click first so Angular's (click) binding fires normally.
+                //    JS click only if the element is intercepted by an overlay.
+                try { trigger.click(); }
+                catch (Exception e) { WaitUtils.jsClick(driver, trigger); }
+                WaitUtils.hardWait(600);
 
+                // 3. Confirm the panel opened — wait for ANY option to be present.
+                //    presenceOfElementLocated (not clickable) avoids false negatives
+                //    caused by PrimeNG CSS animations on the <li> items.
+                By anyOption = By.cssSelector(
+                    "li.p-select-option, .p-select-overlay li[role='option']");
                 try {
-                    WebElement opt = new WebDriverWait(driver, Duration.ofSeconds(8))
-                        .until(ExpectedConditions.elementToBeClickable(optBy));
-                    opt.click();
-                    WaitUtils.hardWait(200);
-                    return;
-                } catch (Exception e) {
-                    // Overlay panel fallback (aria-label + text)
-                    By fallback = By.xpath(
-                        "//*[contains(@class,'p-overlay') or contains(@class,'p-select-panel') " +
-                        "or contains(@class,'p-dropdown-panel')]" +
-                        "//li[@aria-label='" + optionText + "' or normalize-space(.)='" + optionText + "']");
+                    new WebDriverWait(driver, Duration.ofSeconds(8))
+                        .until(ExpectedConditions.presenceOfElementLocated(anyOption));
+                } catch (Exception panelEx) {
+                    System.err.println("[RecruitmentFormPage] Panel did not open for '"
+                        + optionText + "' (attempt " + (attempt + 1) + ")");
+                    dismissOpenPanel();
+                    WaitUtils.hardWait(400);
+                    continue;
+                }
+
+                // 4. Collect all options and find by aria-label / text content.
+                List<WebElement> allOpts = driver.findElements(anyOption);
+                for (WebElement opt : allOpts) {
                     try {
-                        WaitUtils.waitForClickability(driver, fallback).click();
-                        WaitUtils.hardWait(200);
-                        return;
+                        String label = opt.getAttribute("aria-label");
+                        if (label == null || label.isEmpty()) label = opt.getText();
+                        if (label != null && optionText.equalsIgnoreCase(label.trim())) {
+                            WaitUtils.jsClick(driver, opt);
+                            WaitUtils.hardWait(300);
+                            return;
+                        }
+                    } catch (StaleElementReferenceException ignored) {}
+                }
+
+                // 5. Span-text fallback — option label may be in a child <span>.
+                By spanFallback = By.xpath(
+                    "//li[contains(@class,'p-select-option')]" +
+                    "//span[normalize-space()='" + optionText + "'] | " +
+                    "//li[contains(@class,'p-select-option') and @aria-label='" + optionText + "']");
+                List<WebElement> spanMatches = driver.findElements(spanFallback);
+                if (!spanMatches.isEmpty()) {
+                    WaitUtils.jsClick(driver, spanMatches.get(0));
+                    WaitUtils.hardWait(300);
+                    return;
+                }
+
+                // 6. Diagnostic — log what IS available to expose label mismatches.
+                StringBuilder available = new StringBuilder();
+                for (WebElement o : allOpts) {
+                    try {
+                        String lbl = o.getAttribute("aria-label");
+                        if (lbl == null || lbl.isEmpty()) lbl = o.getText();
+                        if (lbl != null && !lbl.trim().isEmpty())
+                            available.append("[").append(lbl.trim()).append("] ");
                     } catch (Exception ignored) {}
                 }
+                System.err.println("[RecruitmentFormPage] Option '" + optionText
+                    + "' not found on attempt " + (attempt + 1)
+                    + ". Available: " + available);
+
             } catch (StaleElementReferenceException stale) {
                 WaitUtils.hardWait(300);
             } catch (Exception e) {
                 System.err.println("[RecruitmentFormPage] selectDropdownInDialog attempt "
                     + (attempt + 1) + " failed: " + e.getMessage());
-                WaitUtils.hardWait(300);
             }
             dismissOpenPanel();
-            WaitUtils.hardWait(200);
+            WaitUtils.hardWait(300);
         }
         System.err.println("[RecruitmentFormPage] Could not select option: " + optionText);
     }
