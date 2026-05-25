@@ -85,24 +85,40 @@ public class MyLeavesTest extends BaseTest {
             WaitUtils.hardWait(700);
         } catch (Exception ignored) {}
 
-        // PrimeNG renders day cells: <td role="gridcell"><span>day#</span></td>
-        // Disabled (weekend or holiday) cells have a `p-disabled` class on the
-        // td or span. Headers for columns: Su Mo Tu We Th Fr Sa.
-        // Count Saturday + Sunday cells of the visible month and check whether
-        // any of them are NOT disabled — that's the bug.
+        // PrimeNG 17 renders day cells as:
+        //   <td data-p-other-month="false" data-p-disabled="false"><span>6</span></td>
+        //
+        // Calendar column layout (Sunday-first, the PrimeNG default):
+        //   Col 1 = Sunday, Col 7 = Saturday
+        //
+        // We want only cells that:
+        //   (a) belong to the current month  (data-p-other-month='false')
+        //   (b) are in the Sunday or Saturday column (position 1 or 7)
+        //   (c) contain a non-empty day number span
+        //
+        // Other-month overflow cells in col 1/7 must be excluded because they may
+        // not carry data-p-disabled="true" even though they represent a weekend day
+        // from the adjacent month — leading to false "clickable" positives.
         List<WebElement> weekendCells = driver.findElements(By.xpath(
             "//*[contains(@class,'p-datepicker') or contains(@class,'p-calendar')]"
-          + "//td[position()=1 or position()=7][.//span[normalize-space()!='']]"));
+          + "//tr/td[@data-p-other-month='false' or not(@data-p-other-month)]"
+          + "[position()=1 or position()=7][.//span[normalize-space()!='']]"));
 
         int totalWeekendCells   = weekendCells.size();
         int clickableWeekendCells = 0;
         for (WebElement td : weekendCells) {
             try {
-                String tdClass   = td.getAttribute("class");
-                WebElement span  = td.findElement(By.tagName("span"));
-                String spanClass = span.getAttribute("class");
-                String ariaDis   = span.getAttribute("aria-disabled");
-                boolean disabled = (tdClass   != null && tdClass.contains("p-disabled"))
+                // PrimeNG 17 marks disabled days with data-p-disabled="true" on the <td>.
+                // Older PrimeNG used the p-disabled CSS class on the td/span.
+                // aria-disabled="true" is a third fallback. Check all three.
+                String tdDataPDisabled = td.getAttribute("data-p-disabled");
+                String tdClass         = td.getAttribute("class");
+                WebElement span        = td.findElement(By.tagName("span"));
+                String spanClass       = span.getAttribute("class");
+                String ariaDis         = span.getAttribute("aria-disabled");
+
+                boolean disabled = "true".equalsIgnoreCase(tdDataPDisabled)
+                                || (tdClass   != null && tdClass.contains("p-disabled"))
                                 || (spanClass != null && spanClass.contains("p-disabled"))
                                 || "true".equalsIgnoreCase(ariaDis);
                 if (!disabled) clickableWeekendCells++;
