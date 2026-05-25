@@ -321,26 +321,31 @@ public class FormTestDataBuilder {
         // ── Positive ──────────────────────────────────────────────────────────
         {"RV_CND_01", "AUTO", "Alice Johnson {ts}",
          "alice.{ts}@test.com", "https://drive.google.com/resume-alice",
-         "PASS", "Positive — full candidate with resume URL"},
+         "PASS", "Positive — full candidate with resume URL (AUTO picks first open job)"},
         {"RV_CND_02", "AUTO", "Bob Smith {ts}",
          "bob.{ts}@test.com", "",
-         "PASS", "Positive — candidate without resume URL"},
+         "PASS", "Positive — candidate without resume URL (resumeUrl optional)"},
         {"RV_CND_03", "AUTO", "Charlie Brown {ts}",
          "charlie.{ts}@test.com", "https://linkedin.com/in/charlie",
-         "PASS", "Positive — third candidate with LinkedIn"},
+         "PASS", "Positive — third candidate, LinkedIn as resume URL"},
 
         // ── Negative ──────────────────────────────────────────────────────────
+        // RV_CND_04: jobOpeningTitle is blank → jobOpeningId p-select left empty →
+        //   form invalid (required) → submitDisabled=true before click.
         {"RV_CND_04", "", "Dave Wilson {ts}",
          "dave.{ts}@test.com", "",
-         "FAIL", "Negative — no job opening selected (jobOpeningId required)"},
+         "FAIL", "Negative — jobOpeningId empty: required field, submit must be disabled"},
+        // RV_CND_05: job selected (AUTO) but name left blank → form invalid.
         {"RV_CND_05", "AUTO", "",
          "eve.{ts}@test.com", "",
-         "FAIL", "Negative — empty name (required)"},
+         "FAIL", "Negative — name empty: required field, submit must be disabled"},
+        // RV_CND_06: malformed email fails Validators.email → form invalid.
         {"RV_CND_06", "AUTO", "Frank Lee {ts}",
          "not-a-valid-email", "",
-         "FAIL", "Negative — malformed email (Validators.email)"},
+         "FAIL", "Negative — email malformed: Validators.email blocks submit"},
+        // RV_CND_07: email left blank → required field → form invalid.
         {"RV_CND_07", "AUTO", "Grace Kim {ts}",
          "", "",
-         "FAIL", "Negative — empty email (required)"},
+         "FAIL", "Negative — email empty: required field, submit must be disabled"},
     };
 }

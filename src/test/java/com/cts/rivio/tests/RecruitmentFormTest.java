@@ -246,9 +246,14 @@ public class RecruitmentFormTest extends BaseTest {
         }
         recruitmentForm.openPipelineTab();
 
-        // For positive "AUTO" rows, verify there is at least one open job before proceeding
+        // For positive "AUTO" rows, verify there is at least one open job before proceeding.
+        // hasAtLeastOneOpenJob() internally switches to the Job Openings tab — always switch
+        // back to the Pipeline tab afterwards so "Add Sourced Candidate" button is visible.
         if ("AUTO".equalsIgnoreCase(jobTitle) && "PASS".equals(expected)) {
             boolean hasJobs = hasAtLeastOneOpenJob();
+            // Switch back to Pipeline tab regardless of result (hasAtLeastOneOpenJob navigates away)
+            recruitmentForm.openPipelineTab();
+            WaitUtils.hardWait(400);
             if (!hasJobs) {
                 ExtentManager.getTest().warning(
                     tcId + " — No open jobs in the system. Skipping positive candidate test.");
