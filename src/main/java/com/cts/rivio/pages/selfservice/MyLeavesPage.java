@@ -417,12 +417,20 @@ public class MyLeavesPage {
      */
     private int[] readCalendarMonthYear() {
         String[] monthSelectors = {
+            // PrimeNG 17 — primary class name
+            "button.p-datepicker-select-month",
+            ".p-datepicker-select-month",
+            // PrimeNG 16 fallbacks
             ".p-datepicker-month-title",
             "button.p-datepicker-month",
             ".p-datepicker-title > button:first-child",
             ".p-datepicker-title > span:first-child",
         };
         String[] yearSelectors = {
+            // PrimeNG 17 — primary class name
+            "button.p-datepicker-select-year",
+            ".p-datepicker-select-year",
+            // PrimeNG 16 fallbacks
             ".p-datepicker-year-title",
             "button.p-datepicker-year",
             ".p-datepicker-title > button:last-child",
@@ -499,47 +507,65 @@ public class MyLeavesPage {
     /**
      * Clicks the day cell for the given day number.
      *
-     * PrimeNG day cells (typical structure):
-     *   <td data-p-other-month="false" data-p-disabled="false">
+     * PrimeNG 17 day cells structure:
+     *   <td data-p-other-month="false" data-p-disabled="false">   ← click handler here
      *     <span class="p-datepicker-day">6</span>
      *   </td>
      *
-     * We look for a non-disabled, non-other-month cell whose span text equals
-     * the day number.
+     * IMPORTANT: In PrimeNG 17 the (click) event handler is bound to the <td>,
+     * not the inner <span>. We therefore select the <td> that *contains* the
+     * matching span and click the <td> directly.
      */
     private void clickDayCell(int day) {
         String dayStr = String.valueOf(day);
-        By[] selectors = {
-            // Most specific: data-p attributes
+
+        // Primary strategy: click the <td> directly (PrimeNG 17 attaches click to <td>)
+        By[] tdSelectors = {
+            // data-p attributes present (PrimeNG 17)
             By.xpath(
                 "//td[@data-p-other-month='false' and @data-p-disabled='false']" +
-                "/span[normalize-space()='" + dayStr + "']"),
-            // Without data-p attributes (older PrimeNG)
+                "[.//span[normalize-space()='" + dayStr + "']]"),
+            // Older PrimeNG or no data-p attributes
             By.xpath(
                 "//td[not(contains(@class,'p-disabled')) " +
                 "and not(contains(@class,'p-datepicker-other-month'))]" +
-                "/span[normalize-space()='" + dayStr + "']"),
-            // Generic fallback
-            By.xpath(
-                "//table[contains(@class,'p-datepicker') or contains(@class,'p-datepicker-day-view')]" +
-                "//td//span[normalize-space()='" + dayStr + "']"),
+                "[.//span[normalize-space()='" + dayStr + "']]"),
         };
 
-        for (By by : selectors) {
+        for (By by : tdSelectors) {
             try {
-                List<WebElement> cells = driver.findElements(by);
-                for (WebElement cell : cells) {
+                List<WebElement> tds = driver.findElements(by);
+                for (WebElement td : tds) {
                     try {
-                        if (cell.isDisplayed() && cell.isEnabled()) {
-                            WaitUtils.scrollAndClick(driver, cell);
-                            WaitUtils.hardWait(200);
+                        if (td.isDisplayed()) {
+                            // Prefer JS click so events fire even if element is partially
+                            // obscured by the dialog overlay
+                            WaitUtils.jsClick(driver, td);
+                            WaitUtils.hardWait(250);
                             return;
                         }
                     } catch (Exception ignored) {}
                 }
             } catch (Exception ignored) {}
         }
-        System.err.println("[MyLeavesPage] Could not click day cell for day: " + day);
+
+        // Fallback: click the inner <span> — bubbling should still reach the <td>
+        By spanFallback = By.xpath(
+            "//td[@data-p-other-month='false' and @data-p-disabled='false']" +
+            "/span[normalize-space()='" + dayStr + "']");
+        try {
+            List<WebElement> spans = driver.findElements(spanFallback);
+            for (WebElement span : spans) {
+                if (span.isDisplayed()) {
+                    WaitUtils.scrollAndClick(driver, span);
+                    WaitUtils.hardWait(250);
+                    return;
+                }
+            }
+        } catch (Exception ignored) {}
+
+        System.err.println("[MyLeavesPage] Could not click day cell for day: " + day
+            + " — td and span selectors both failed");
     }
 
     private void dismissOpenPanel() {
@@ -571,13 +597,24 @@ public class MyLeavesPage {
      * Checks whether the Submit Request button is disabled.
      * The button is disabled when: form invalid OR submitting OR
      * insufficientBalance OR daysRequested == 0.
+     *
+     * IMPORTANT: Angular sets the DOM *property* `disabled`, not the HTML *attribute*.
+     * Therefore getAttribute("disabled") always returns null (misleading "enabled").
+     * We use WebElement.isEnabled() which reads the property correctly, OR fall back
+     * to a JS property check for robustness.
      */
     public boolean isSubmitDisabled() {
         try {
             List<WebElement> btns = driver.findElements(SUBMIT_BTN);
             if (btns.isEmpty()) return true;
-            String dis = btns.get(0).getAttribute("disabled");
-            return dis != null;
+            WebElement btn = btns.get(0);
+            // isEnabled() reads the DOM property (not attribute) — correct for Angular
+            if (!btn.isEnabled()) return true;
+            // Double-check via JS property in case of driver inconsistency
+            Object jsProp = ((JavascriptExecutor) driver)
+                .executeScript("return arguments[0].disabled;", btn);
+            if (Boolean.TRUE.equals(jsProp)) return true;
+            return false;
         } catch (Exception e) { return true; }
     }
 
